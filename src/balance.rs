@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Add;
-use rust_decimal::{Decimal};
-use crate::ledger::{Ledger, Ledgers, Action};
+use rust_decimal::Decimal;
+use crate::ledger::{Ledger, Ledgers};
 
 #[derive(Debug, PartialEq)]
 pub enum BalanceError {
@@ -32,7 +32,7 @@ impl Balance {
             return Err(BalanceError::BalanceNotEnough);
         }
 
-        self.ledgers.add(ledger);
+        let _ = self.ledgers.add(ledger);
 
         let total = self.ledgers.sum();
         return Ok(total);
@@ -60,6 +60,8 @@ impl fmt::Display for Balance {
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
+
+    use crate::ledger::Action;
 
     #[test]
     fn test_balance_new_valid_currency() {

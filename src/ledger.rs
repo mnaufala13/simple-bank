@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::fmt;
-use std::fmt::{Formatter};
+use std::fmt::Formatter;
 use std::ops::Add;
+use std::rc::Rc;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rand::Rng;
 use rust_decimal::Decimal;
@@ -11,6 +13,7 @@ pub enum LedgerError {
     EmptyAmount,
     ParseAmount,
     InvalidAmount(String),
+    DuplicateLedger, // Add this line
 }
 
 #[derive(Debug, PartialEq)]
@@ -30,7 +33,7 @@ impl fmt::Display for Action {
 
 #[derive(Debug, PartialEq)]
 pub struct Ledger {
-    id: String,
+    id: Rc<String>,
     action: String,
     amount: Decimal,
 }
@@ -67,7 +70,7 @@ impl Ledger {
         };
 
         Ok(Ledger {
-            id: generate_random_string(16),
+            id: Rc::new(generate_random_string(16)),
             action: action.to_string(),
             amount: Decimal::from_f64(amount).unwrap(),
         })
@@ -79,15 +82,22 @@ impl Ledger {
 
 #[derive(Debug, PartialEq)]
 pub struct Ledgers {
+    index: HashSet<Rc<String>>,
     pub collection: Vec<Ledger>,
 }
 
 impl Ledgers {
     pub fn new() -> Ledgers {
-        Ledgers { collection: vec![] }
+        Ledgers { index: HashSet::new(), collection: vec![] }
     }
-    pub fn add(&mut self, ledger: Ledger) {
+    pub fn add(&mut self, ledger: Ledger) -> Result<(), LedgerError> {
+        let id = ledger.id.clone();
+        if self.index.contains(&id) {
+            return Err(LedgerError::DuplicateLedger);
+        }
+        self.index.insert(id);
         self.collection.push(ledger);
+        Ok(())
     }
     pub fn len(&self) -> usize {
         self.collection.len()
@@ -175,7 +185,7 @@ mod tests {
         let mut ledgers = Ledgers::new();
         let action = Action::Deposit("100.0".to_string());
         let ledger = Ledger::new(action).unwrap();
-        ledgers.add(ledger);
+        let _ = ledgers.add(ledger);
         assert_eq!(ledgers.len(), 1);
     }
 
@@ -184,12 +194,25 @@ mod tests {
         let mut ledgers = Ledgers::new();
         let action_deposit = Action::Deposit("100.0".to_string());
         let ledger_deposit = Ledger::new(action_deposit).unwrap();
-        ledgers.add(ledger_deposit);
+        let _ = ledgers.add(ledger_deposit);
 
         let action_withdrawal = Action::Withdrawal("50.0".to_string());
         let ledger_withdrawal = Ledger::new(action_withdrawal).unwrap();
-        ledgers.add(ledger_withdrawal);
+        let _ = ledgers.add(ledger_withdrawal);
 
         assert_eq!(ledgers.sum(), rust_decimal_macros::dec!(50.0));
+    }
+
+    #[test]
+    fn test_ledgers_add_duplicate() {
+        let mut ledgers = Ledgers::new();
+        let action1 = Action::Deposit("100.0".to_string());
+        let action2 = Action::Deposit("100.0".to_string());
+        let ledger1 = Ledger::new(action1).unwrap();
+        let mut ledger2 = Ledger::new(action2).unwrap();
+        ledger2.id = ledger1.id.clone();
+
+        assert_eq!(ledgers.add(ledger1), Ok(()));
+        assert_eq!(ledgers.add(ledger2), Err(LedgerError::DuplicateLedger));
     }
 }
