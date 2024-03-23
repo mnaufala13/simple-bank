@@ -1,7 +1,7 @@
+use crate::ledger::{Ledger, Ledgers};
+use rust_decimal::Decimal;
 use std::fmt;
 use std::ops::Add;
-use rust_decimal::Decimal;
-use crate::ledger::{Ledger, Ledgers};
 
 #[derive(Debug, PartialEq)]
 pub enum BalanceError {
@@ -11,8 +11,17 @@ pub enum BalanceError {
 
 #[derive(Debug, PartialEq)]
 pub struct Balance {
-    currency: String,
+    pub currency: String,
     ledgers: Ledgers,
+}
+
+impl Clone for Balance {
+    fn clone(&self) -> Self {
+        Balance {
+            currency: self.currency.clone(),
+            ledgers: self.ledgers.clone(),
+        }
+    }
 }
 
 impl Balance {
@@ -21,7 +30,10 @@ impl Balance {
             return Err(BalanceError::InvalidCurrency);
         }
         let currency = currency.to_string().to_uppercase();
-        return Ok(Balance { currency, ledgers: Ledgers::new() });
+        return Ok(Balance {
+            currency,
+            ledgers: Ledgers::new(),
+        });
     }
 
     pub fn mutate(&mut self, ledger: Ledger) -> Result<Decimal, BalanceError> {
@@ -54,7 +66,6 @@ impl fmt::Display for Balance {
         write!(f, "{} {}", self.currency, self.amount().to_string())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

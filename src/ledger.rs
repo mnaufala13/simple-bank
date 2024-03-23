@@ -1,12 +1,12 @@
+use rand::Rng;
+use rand::{distributions::Alphanumeric, thread_rng};
+use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 use std::ops::Add;
 use std::rc::Rc;
-use rand::{distributions::Alphanumeric, thread_rng};
-use rand::Rng;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 
 #[derive(Debug, PartialEq)]
 pub enum LedgerError {
@@ -30,12 +30,29 @@ impl fmt::Display for Action {
         }
     }
 }
+impl Clone for Ledgers {
+    fn clone(&self) -> Self {
+        Ledgers {
+            index: self.index.clone(),
+            collection: self.collection.clone(),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Ledger {
     id: Rc<String>,
     action: String,
     amount: Decimal,
+}
+impl Clone for Ledger {
+    fn clone(&self) -> Self {
+        Ledger {
+            id: Rc::clone(&self.id),
+            action: self.action.clone(),
+            amount: self.amount,
+        }
+    }
 }
 
 impl fmt::Display for Ledger {
@@ -54,10 +71,9 @@ impl Ledger {
                 let msg = "amount can't be negative".to_string();
                 return Err(LedgerError::InvalidAmount(msg));
             }
-            Action::Withdrawal(a) | Action::Deposit(a) => {
-                a.parse::<f64>()
-            }
-        }.map_err(|_| LedgerError::ParseAmount)?;
+            Action::Withdrawal(a) | Action::Deposit(a) => a.parse::<f64>(),
+        }
+        .map_err(|_| LedgerError::ParseAmount)?;
 
         if amount == 0.0 {
             let msg = "amount can't zero".to_string();
@@ -88,7 +104,10 @@ pub struct Ledgers {
 
 impl Ledgers {
     pub fn new() -> Ledgers {
-        Ledgers { index: HashSet::new(), collection: vec![] }
+        Ledgers {
+            index: HashSet::new(),
+            collection: vec![],
+        }
     }
     pub fn add(&mut self, ledger: Ledger) -> Result<(), LedgerError> {
         let id = ledger.id.clone();
@@ -122,7 +141,7 @@ fn generate_random_string(len: usize) -> String {
 
 mod tests {
     use super::*;
-    
+
     use rust_decimal_macros::dec;
 
     #[test]
