@@ -1,10 +1,10 @@
 use std::fmt;
 use std::fmt::{Formatter};
 use std::ops::Add;
-use std::str::FromStr;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rand::Rng;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 
 #[derive(Debug, PartialEq)]
 pub enum LedgerError {
@@ -15,15 +15,24 @@ pub enum LedgerError {
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
-    Withdrawal,
-    Deposit,
+    Withdrawal(String),
+    Deposit(String),
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Action::Deposit(_) => write!(f, "Deposit"),
+            Action::Withdrawal(_) => write!(f, "Withdrawal"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Ledger {
     id: String,
-    action: Action,
-    amount: String,
+    action: String,
+    amount: Decimal,
 }
 
 impl fmt::Display for Ledger {
@@ -33,27 +42,37 @@ impl fmt::Display for Ledger {
 }
 
 impl Ledger {
-    pub fn new(action: Action, amount: &str) -> Result<Ledger, LedgerError> {
-        if amount.is_empty() {
-            return Err(LedgerError::EmptyAmount);
-        }
-        let amount = amount.parse::<f64>().map_err(|_| LedgerError::ParseAmount)?;
-        match action {
-            Action::Withdrawal if amount >= 0.0 => {
-                return Err(LedgerError::InvalidAmount("withdrawal amount can't positive or zero".to_string()));
+    pub fn new(action: Action) -> Result<Ledger, LedgerError> {
+        let amount = match &action {
+            Action::Withdrawal(a) | Action::Deposit(a) if a.is_empty() => {
+                return Err(LedgerError::EmptyAmount);
             }
-            Action::Deposit if amount <= 0.0 => {
-                return Err(LedgerError::InvalidAmount("deposit amount can't negative or zero".to_string()));
+            Action::Withdrawal(a) | Action::Deposit(a) if a.starts_with("-") => {
+                let msg = "amount can't be negative".to_string();
+                return Err(LedgerError::InvalidAmount(msg));
             }
-            _ => (),
+            Action::Withdrawal(a) | Action::Deposit(a) => {
+                a.parse::<f64>()
+            }
+        }.map_err(|_| LedgerError::ParseAmount)?;
+
+        if amount == 0.0 {
+            let msg = "amount can't zero".to_string();
+            return Err(LedgerError::InvalidAmount(msg));
         }
+
+        let amount = match &action {
+            Action::Deposit(_) => amount,
+            Action::Withdrawal(_) => amount * -1.0,
+        };
+
         Ok(Ledger {
             id: generate_random_string(16),
-            action,
-            amount: amount.to_string(),
+            action: action.to_string(),
+            amount: Decimal::from_f64(amount).unwrap(),
         })
     }
-    pub fn amount(&self) -> String {
+    pub fn amount(&self) -> Decimal {
         self.amount.clone()
     }
 }
@@ -76,8 +95,7 @@ impl Ledgers {
     pub fn sum(&self) -> Decimal {
         let mut total = Decimal::default();
         for l in &self.collection {
-            let amount = Decimal::from_str(l.amount.as_str()).unwrap();
-            total = total.add(amount);
+            total = total.add(l.amount());
         }
         total
     }
@@ -94,63 +112,84 @@ fn generate_random_string(len: usize) -> String {
 
 mod tests {
     use super::*;
-    use super::Action::*;
+    
+    use rust_decimal_macros::dec;
 
     #[test]
-    fn test_ledger_sum() {
-        let ll = Ledgers {
-            collection: vec![
-                Ledger::new(Deposit, "100.5").unwrap(),
-                Ledger::new(Deposit, "100.20").unwrap(),
-                Ledger::new(Deposit, "10.23131").unwrap(),
-                Ledger::new(Deposit, "11.0").unwrap(),
-                Ledger::new(Withdrawal, "-31.22").unwrap(),
-            ]
-        };
-        let total = ll.sum();
-        assert_eq!(total.to_string(), "190.71131")
+    fn test_ledger_new_withdrawal_positive_amount() {
+        let action = Action::Withdrawal("100.0".to_string());
+        let ledger = Ledger::new(action).unwrap();
+        assert_eq!(ledger.amount(), dec!(-100.0));
     }
 
     #[test]
-    fn test_ledger_new() {
-        let e = Ledger::new(Deposit, "100.5").unwrap();
-        assert_eq!(e.action, Deposit);
-        assert_eq!(e.amount, "100.5");
-
-        let e = Ledger::new(Withdrawal, "-20.2").unwrap();
-        assert_eq!(e.action, Withdrawal);
-        assert_eq!(e.amount, "-20.2");
+    fn test_ledger_new_deposit_positive_amount() {
+        let action = Action::Deposit("200.0".to_string());
+        let ledger = Ledger::new(action).unwrap();
+        assert_eq!(ledger.amount(), dec!(200.0));
     }
 
     #[test]
-    fn test_ledger_new_invalid_amount_withdraw() {
-        let e = Ledger::new(Withdrawal, "100.5").unwrap_err();
-        assert_eq!(e, LedgerError::InvalidAmount("withdrawal amount can't positive or zero".to_string()))
+    fn test_ledger_new_withdrawal_empty_amount() {
+        let action = Action::Withdrawal("".to_string());
+        let result = Ledger::new(action);
+        assert!(matches!(result, Err(LedgerError::EmptyAmount)));
     }
 
     #[test]
-    fn test_ledger_new_invalid_amount_deposit() {
-        let e = Ledger::new(Deposit, "-100.5").unwrap_err();
-        assert_eq!(e, LedgerError::InvalidAmount("deposit amount can't negative or zero".to_string()))
+    fn test_ledger_new_deposit_empty_amount() {
+        let action = Action::Deposit("".to_string());
+        let result = Ledger::new(action);
+        assert!(matches!(result, Err(LedgerError::EmptyAmount)));
     }
 
     #[test]
-    fn test_ledger_new_empty_amount() {
-        let e = Ledger::new(Deposit, "").unwrap_err();
-        assert_eq!(e, LedgerError::EmptyAmount)
+    fn test_ledger_new_withdrawal_negative_amount() {
+        let action = Action::Withdrawal("-50.0".to_string());
+        let result = Ledger::new(action);
+        assert!(matches!(result, Err(LedgerError::InvalidAmount(_))));
     }
 
     #[test]
-    fn test_ledger_new_parse_amount() {
-        let e = Ledger::new(Deposit, "abc").unwrap_err();
-        assert_eq!(e, LedgerError::ParseAmount)
+    fn test_ledger_new_deposit_negative_amount() {
+        let action = Action::Deposit("-50.0".to_string());
+        let result = Ledger::new(action);
+        assert!(matches!(result, Err(LedgerError::InvalidAmount(_))));
+    }
+
+    #[test]
+    fn test_ledger_new_zero_amount() {
+        let action = Action::Deposit("0.0".to_string());
+        let result = Ledger::new(action);
+        assert!(matches!(result, Err(LedgerError::InvalidAmount(_))));
+    }
+
+    #[test]
+    fn test_ledgers_new() {
+        let ledgers = Ledgers::new();
+        assert_eq!(ledgers.len(), 0);
     }
 
     #[test]
     fn test_ledgers_add() {
-        let mut l = Ledgers::new();
-        let ledger = Ledger::new(Deposit, "100.00").unwrap();
-        l.add(ledger);
-        assert_eq!(l.len(), 1);
+        let mut ledgers = Ledgers::new();
+        let action = Action::Deposit("100.0".to_string());
+        let ledger = Ledger::new(action).unwrap();
+        ledgers.add(ledger);
+        assert_eq!(ledgers.len(), 1);
+    }
+
+    #[test]
+    fn test_ledgers_sum() {
+        let mut ledgers = Ledgers::new();
+        let action_deposit = Action::Deposit("100.0".to_string());
+        let ledger_deposit = Ledger::new(action_deposit).unwrap();
+        ledgers.add(ledger_deposit);
+
+        let action_withdrawal = Action::Withdrawal("50.0".to_string());
+        let ledger_withdrawal = Ledger::new(action_withdrawal).unwrap();
+        ledgers.add(ledger_withdrawal);
+
+        assert_eq!(ledgers.sum(), rust_decimal_macros::dec!(50.0));
     }
 }

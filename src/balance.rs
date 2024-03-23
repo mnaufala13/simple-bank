@@ -1,11 +1,10 @@
-use std::{fmt, str::FromStr};
+use std::fmt;
 use std::ops::Add;
 use rust_decimal::{Decimal};
 use crate::ledger::{Ledger, Ledgers, Action};
 
 #[derive(Debug, PartialEq)]
 pub enum BalanceError {
-    ParseAmount(rust_decimal::Error),
     InvalidCurrency,
     BalanceNotEnough,
 }
@@ -26,8 +25,7 @@ impl Balance {
     }
 
     pub fn mutate(&mut self, ledger: Ledger) -> Result<Decimal, BalanceError> {
-        let amount = Decimal::from_str(ledger.amount().as_str()).
-            map_err(|e| BalanceError::ParseAmount(e))?;
+        let amount = ledger.amount();
 
         let current_balance = self.ledgers.sum();
         if current_balance.add(amount).is_sign_negative() {
@@ -57,35 +55,56 @@ impl fmt::Display for Balance {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
 
-    #[test]
-    fn test_balance_new_empty_currency() {
-        let e = Balance::new("").unwrap_err();
-        assert_eq!(e, BalanceError::InvalidCurrency)
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_balance_new_valid_currency() {
-        let b = Balance::new("USD").unwrap();
-        assert_eq!(b.currency, "USD")
+        let balance = Balance::new("USD");
+        assert!(balance.is_ok());
+        let balance = balance.unwrap();
+        assert_eq!(balance.currency, "USD");
     }
 
     #[test]
-    fn test_balance_mutate_negative_balance() {
-        let mut b = Balance::new("USD").unwrap();
-        let ledger = Ledger::new(Action::Withdrawal, "-200.00").unwrap();
-        let e = b.mutate(ledger).unwrap_err();
-        assert_eq!(e, BalanceError::BalanceNotEnough)
+    fn test_balance_new_empty_currency() {
+        let balance = Balance::new("");
+        assert!(matches!(balance, Err(BalanceError::InvalidCurrency)));
     }
 
     #[test]
-    fn test_balance_mutate_valid_amount() {
-        let mut b = Balance::new("USD").unwrap();
-        let ledger = Ledger::new(Action::Deposit, "100.00").unwrap();
-        let total = b.mutate(ledger).unwrap();
-        assert_eq!(total, Decimal::new(100, 0))
+    fn test_balance_mutate_with_sufficient_funds() {
+        let mut balance = Balance::new("USD").unwrap();
+        let ledger = Ledger::new(Action::Deposit("100.0".to_string())).unwrap();
+        let result = balance.mutate(ledger);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), dec!(100.0));
+    }
+
+    #[test]
+    fn test_balance_mutate_with_insufficient_funds() {
+        let mut balance = Balance::new("USD").unwrap();
+        let ledger = Ledger::new(Action::Withdrawal("100.0".to_string())).unwrap();
+        let result = balance.mutate(ledger);
+        assert!(matches!(result, Err(BalanceError::BalanceNotEnough)));
+    }
+
+    #[test]
+    fn test_balance_amount_with_no_ledgers() {
+        let balance = Balance::new("USD").unwrap();
+        assert_eq!(balance.amount(), Decimal::default());
+    }
+
+    #[test]
+    fn test_balance_amount_with_ledgers() {
+        let mut balance = Balance::new("USD").unwrap();
+        let ledger_deposit = Ledger::new(Action::Deposit("100.0".to_string())).unwrap();
+        balance.mutate(ledger_deposit).unwrap();
+        let ledger_withdrawal = Ledger::new(Action::Withdrawal("50.0".to_string())).unwrap();
+        balance.mutate(ledger_withdrawal).unwrap();
+        assert_eq!(balance.amount(), dec!(50.0));
     }
 }
