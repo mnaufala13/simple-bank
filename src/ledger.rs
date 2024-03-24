@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 use std::ops::Add;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, PartialEq)]
 pub enum LedgerError {
@@ -41,14 +41,14 @@ impl Clone for Ledgers {
 
 #[derive(Debug, PartialEq)]
 pub struct Ledger {
-    id: Rc<String>,
+    id: Arc<String>,
     action: String,
     amount: Decimal,
 }
 impl Clone for Ledger {
     fn clone(&self) -> Self {
         Ledger {
-            id: Rc::clone(&self.id),
+            id: Arc::clone(&self.id),
             action: self.action.clone(),
             amount: self.amount,
         }
@@ -86,7 +86,7 @@ impl Ledger {
         };
 
         Ok(Ledger {
-            id: Rc::new(generate_random_string(16)),
+            id: Arc::new(generate_random_string(16)),
             action: action.to_string(),
             amount: Decimal::from_f64(amount).unwrap(),
         })
@@ -98,7 +98,7 @@ impl Ledger {
 
 #[derive(Debug, PartialEq)]
 pub struct Ledgers {
-    index: HashSet<Rc<String>>,
+    index: HashSet<Arc<String>>,
     pub collection: Vec<Ledger>,
 }
 
@@ -139,23 +139,22 @@ fn generate_random_string(len: usize) -> String {
     return s;
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    use rust_decimal_macros::dec;
 
     #[test]
     fn test_ledger_new_withdrawal_positive_amount() {
         let action = Action::Withdrawal("100.0".to_string());
         let ledger = Ledger::new(action).unwrap();
-        assert_eq!(ledger.amount(), dec!(-100.0));
+        assert_eq!(ledger.amount(), Decimal::from_f64(-100.0).unwrap());
     }
 
     #[test]
     fn test_ledger_new_deposit_positive_amount() {
         let action = Action::Deposit("200.0".to_string());
         let ledger = Ledger::new(action).unwrap();
-        assert_eq!(ledger.amount(), dec!(200.0));
+        assert_eq!(ledger.amount(), Decimal::from_f64(200.0).unwrap());
     }
 
     #[test]
@@ -219,7 +218,7 @@ mod tests {
         let ledger_withdrawal = Ledger::new(action_withdrawal).unwrap();
         let _ = ledgers.add(ledger_withdrawal);
 
-        assert_eq!(ledgers.sum(), rust_decimal_macros::dec!(50.0));
+        assert_eq!(ledgers.sum(), Decimal::from_f64(50.0).unwrap());
     }
 
     #[test]

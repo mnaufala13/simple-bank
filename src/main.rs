@@ -43,7 +43,7 @@ fn main() {
     }
 
     // Display final balance
-    if let Some(balance) = storage.get_mut(account_id) {
+    if let Some(balance) = storage.get(account_id) {
         println!("Final balance: {}", balance);
     } else {
         println!("Account not found");
@@ -53,10 +53,13 @@ fn main() {
 fn simulate_deposit(storage: &mut InMemory, account_id: &str, amount: f64) -> Result<(), String> {
     let action = Action::Deposit(amount.to_string());
     let ledger = Ledger::new(action).map_err(|e| format!("Error creating ledger: {:?}", e))?;
-    if let Some(balance) = storage.get_mut(account_id) {
-        balance
-            .mutate(ledger)
+    if let Some(mut balance) = storage.get(account_id) {
+        balance.
+            mutate(ledger)
             .map_err(|e| format!("Error mutating balance: {:?}", e))?;
+        storage.
+            update(account_id, balance.clone()).
+            map_err(|e| format!("Error updating balance: {:?}", e))?;
     } else {
         return Err("Account not found".to_string());
     }
@@ -70,10 +73,13 @@ fn simulate_withdrawal(
 ) -> Result<(), String> {
     let action = Action::Withdrawal(amount.to_string());
     let ledger = Ledger::new(action).map_err(|e| format!("Error creating ledger: {:?}", e))?;
-    if let Some(balance) = storage.get_mut(account_id) {
+    if let Some(mut balance) = storage.get(account_id) {
         balance
             .mutate(ledger)
             .map_err(|e| format!("Error mutating balance: {:?}", e))?;
+        storage.
+            update(account_id, balance.clone()).
+            map_err(|e| format!("Error updating balance: {:?}", e))?;
     } else {
         return Err("Account not found".to_string());
     }
